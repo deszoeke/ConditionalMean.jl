@@ -9,21 +9,23 @@ export condmean, condvar, condstd
 """
 #condmean{T<:Real}(A::AbstractArray{T}, cond::Function, region=1) = _condmean(A, T, region)
 # vectorizing mean(A[:]) is trivial, so keep default region definition of 1
-condmean{T<:Number}(             A::AbstractArray{T}, cond::Function=true, region=1; Km1::Bool=false) = _condmean(identity, A, T, cond      , region, Km1)
-condmean{T<:Number}(             A::AbstractArray{T}, cond::Number       , region=1; Km1::Bool=false) = _condmean(identity, A, T, x->x!=cond, region, Km1)
-condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Function=true, region=1; Km1::Bool=false) = _condmean(f       , A, T, cond      , region, Km1)
-condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number       , region=1; Km1::Bool=false) = _condmean(f       , A, T, x->x!=cond, region, Km1)
+condmean{T<:Number}(             A::AbstractArray{T}, cond::Function=(x->true), region=1; Km1::Bool=false) = _condmean(identity, A, T, cond      , region, Km1)
+condmean{T<:Number}(             A::AbstractArray{T}, cond::Number            , region=1; Km1::Bool=false) = _condmean(identity, A, T, x->x!=cond, region, Km1)
+condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Function=(x->true), region=1; Km1::Bool=false) = _condmean(f       , A, T, cond      , region, Km1)
+condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number            , region=1; Km1::Bool=false) = _condmean(f       , A, T, x->x!=cond, region, Km1)
 
-#=
 # general condition cond generalizes to all Number types, but behavior maybe unpredictable for some
-function _condmean{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region)
+function _condmean{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
     sz = Base.reduced_dims(A, region)
     K = zeros(Int, sz)
     S = zeros(eltype(A), sz)
     condsum!(S, K, A, f, cond)
-    S./K
+    if Km1
+       S./(K-1)
+    else
+       S./K
+    end
 end
-=#
 
 using Base: check_reducedims, reducedim1, safe_tail
 using Base.Broadcast: newindex
@@ -95,7 +97,7 @@ function _condmeanoffset{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, co
     end
 end
 
-_condmean=_condmeanoffset # improve floating point precision of mean
+# _condmean=_condmeanoffset # improve floating point precision of mean
 
 """
     condsumoffset!(S, P, K, A, f, cond)
@@ -138,6 +140,7 @@ function condsumoffset!{T,N}(S, P, K, A::AbstractArray{T,N}, f, cond)
                 if cond(tmp)
                     if isfirst
                         p = f(tmp)
+                        @show tmp, p
                         isfirst = false
                     else
                         s += f(tmp)-p
@@ -176,8 +179,8 @@ end
 estimate of the variance of A (normalized by N-1) along dims in region.
 `corrected=false` gives the variance normalized by N.
 """
-condvar(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected)
-condstd(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = sqrt(condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected)
+condvar(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) =      condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected)
+condstd(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = sqrt(condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected))
 # corrected=true normalizes variance by K-1
 
 
