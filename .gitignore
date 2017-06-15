@@ -23,6 +23,9 @@ src/Images_algorithms_*.jl
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
 *.ji
 deps/deps.jl
 
