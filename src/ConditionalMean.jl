@@ -14,18 +14,38 @@ condmean{T<:Number}(             A::AbstractArray{T}, cond::Number            , 
 condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Function=(x->true), region=1; Km1::Bool=false) = _condmean(f       , A, T, cond      , region, Km1)
 condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number            , region=1; Km1::Bool=false) = _condmean(f       , A, T, x->x!=cond, region, Km1)
 
-# general condition cond generalizes to all Number types, but behavior maybe unpredictable for some
-function _condmean{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
+# redirect _condmean to _condmeanoffset for Array{Float32} to improve precision
+#_condmean{T<:Float32}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false) = _condmeanoffset(f, A, T, cond, region, Km1)
+
+# # general condition cond generalizes to all Number types, but behavior maybe unpredictable for some
+# function _condmean{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
+#     sz = Base.reduced_dims(A, region)
+#     K = zeros(Int, sz)
+#     S = zeros(eltype(A), sz)
+#     condsum!(S, K, A, f, cond)
+#     if Km1
+#        S./(K-1)
+#     else
+#        S./K
+#     end
+# end
+
+# add offset to improve precision for floating point numerics, behavior unpredictable for other types
+function _condmeanoffset{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
     sz = Base.reduced_dims(A, region)
     K = zeros(Int, sz)
     S = zeros(eltype(A), sz)
-    condsum!(S, K, A, f, cond)
+    P = zeros(eltype(A), sz)
+    condsumoffset!(S, P, K, A, f, cond)
     if Km1
-       S./(K-1)
+        (S + P.*K) ./ (K-1)
     else
-       S./K
+        S./K + P
     end
 end
+
+# always redirect _condmean to _condmeanoffset to improve precision
+_condmean=_condmeanoffset
 
 using Base: check_reducedims, reducedim1, safe_tail
 using Base.Broadcast: newindex
@@ -83,22 +103,7 @@ else
     _newindexer(shape, inds) = Base.Broadcast.shapeindexer(shape, inds)
 end
 
-# adding offset intended to improve precision for floating point numerics, behavior unpredictable for other types
-function _condmeanoffset{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
-    sz = Base.reduced_dims(A, region)
-    K = zeros(Int, sz)
-    S = zeros(eltype(A), sz)
-    P = zeros(eltype(A), sz)
-    condsumoffset!(S, P, K, A, f, cond)
-    if Km1
-        (S + P.*K) ./ (K-1)
-    else
-        S./K + P
-    end
-end
-
-# _condmean=_condmeanoffset # improve floating point precision of mean
-
+# add offset to improve precision for floating point numerics, behavior unpredictable for other types
 """
     condsumoffset!(S, P, K, A, f, cond)
 
@@ -122,6 +127,7 @@ The value mean computed in `condmeanprecise` is S./K+P.
 See also `condsum!` and `condmeanoffset`.
 """
 function condsumoffset!{T,N}(S, P, K, A::AbstractArray{T,N}, f, cond)
+  #loops over dimensions of A _then_ determines dimensions of reduced S
     check_reducedims(S, A)
     isempty(A) && return S, K
     indices(S) == indices(K) || throw(DimensionMismatch("S and K must have identical indices"))
@@ -134,14 +140,13 @@ function condsumoffset!{T,N}(S, P, K, A::AbstractArray{T,N}, f, cond)
         @inbounds for IA in CartesianRange(indsAt)
             IS = newindex(IA, keep, Idefault)
             s, p, k = S[i1,IS], P[i1,IS], K[i1,IS]
-            isfirst = true
+            #isfirst = true
             for i in indices(A, 1)
                 tmp = A[i, IA]
                 if cond(tmp)
-                    if isfirst
+                    if k==0 #isfirst
                         p = f(tmp)
-                        @show tmp, p
-                        isfirst = false
+                        #isfirst = false
                     else
                         s += f(tmp)-p
                     end
@@ -153,13 +158,13 @@ function condsumoffset!{T,N}(S, P, K, A::AbstractArray{T,N}, f, cond)
     else
         @inbounds for IA in CartesianRange(indsAt)
             IS = newindex(IA, keep, Idefault)
-            isfirst = true
+            #isfirst = true
             for i in indices(A, 1)
                 tmp = A[i, IA]
                 if cond(tmp)
-                    if isfirst
+                    if K[i, IS]==0 #isfirst
                         P[i, IS] = f(tmp)
-                        isfirst = false
+                        #isfirst = false
                     else
                         S[i, IS] += f(tmp)-P[i, IS]
                     end
@@ -170,8 +175,18 @@ function condsumoffset!{T,N}(S, P, K, A::AbstractArray{T,N}, f, cond)
     end
     S, P, K
 end
+#=
+if testing for k==0 is slow, then an alternative that works in many cases for
+nearly constant offsets across the whole of A would be to just subtract off the
+first good value in all of A. This would be good for surface pressure, but not
+good for a significant gradient of A, like atmospheric pressure from the surface
+to the stratosphere, where p varies by an order of magnitude.
+Another solution, that I don't think will be faster, is to make a boolean array
+`isfirst` like `K` but private to condsumoffset that stores whether the offset
+has been recorded in `P`.
+=#
 
-
+# NOT TESTED
 # precise, but requires two passes of condmean through A
 # instead could write a version of condsum that accumulates multiple outputs of f, e.g. f(x)=[x, x*x]
 """

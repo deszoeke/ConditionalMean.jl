@@ -8,14 +8,16 @@ A[:]=1:25
 # all finite values
 
 # write your own tests here
+@time condmean(A[:],isfinite)[1] == mean(A)
 @test condmean(A[:],isfinite)[1] == mean(A)
+@time condmean(A[:],isfinite)[1] == mean(A)
 
 
 f(x)=2x
 c(x)=x>5
 @test condmean(f,A,c)[2:5] == condmean(f,A,c,1)[2:5]
 @test isnan(condmean(f,A,c)[1])
-@test condmean(f,A,c,2) == mean(2*A,2)+5
+@test condmean(f,A,c,2) == mean(2*A,2)+5 # this fails for
 
 # use a missing value
 mv=-999.0
@@ -41,9 +43,19 @@ B[3,:]=NaN
 # test precision issues; first no missing values
 B=Array{Float64}(A)
 B[:]=A[:]+1e6
-@show residual64 = (condmean(B[:],NaN)[1] - 1e6 - 13.0)
-B=Array{Float32}(B)
-@show residual32 = (condmean(B[:],NaN)[1] - 1e6 - 13.0)
+Bs=Array{Float32}(B)
+
+# first single precision instance requires compilation
+@time residual32 = (condmean(Bs[:],NaN)[1] - 1e6 - 13.0)
+@time residual32 = (condmean(Bs[:],NaN)[1] - 1e6 - 13.0)
+@time residual32 = (condmean(Bs[:],NaN)[1] - 1e6 - 13.0)
+@show residual32
+
+@time residual64 = (condmean(B[:],NaN)[1] - 1e6 - 13.0)
+@time residual64 = (condmean(B[:],NaN)[1] - 1e6 - 13.0)
+@time residual64 = (condmean(B[:],NaN)[1] - 1e6 - 13.0)
+@show residual64
+
 if     !(residual64 ≈ Float64(0.0))
   warn("ConditionalMean: condmean imprecise for double precision.")
 elseif !(residual32 ≈ Float32(0.0))
