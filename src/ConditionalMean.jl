@@ -2,6 +2,7 @@ module ConditionalMean
 
 using Base: indices1, tail
 export condmean, condvar, condstd
+export nanmean, nanstd
 
 """
 `M = condmean(A, cond, region)` calculates the mean value of A along the dimensions listed in `region`, ignoring values when cond is not true, or values equal to cond if cond is a number.
@@ -32,7 +33,7 @@ condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number            , 
 
 # add offset to improve precision for floating point numerics, behavior unpredictable for other types
 function _condmeanoffset{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
-    sz = Base.reduced_dims(A, region)
+    sz = Base.reduced_indices(A, region)
     K = zeros(Int, sz)
     S = zeros(eltype(A), sz)
     P = zeros(eltype(A), sz)
@@ -194,9 +195,13 @@ has been recorded in `P`.
 estimate of the variance of A (normalized by N-1) along dims in region.
 `corrected=false` gives the variance normalized by N.
 """
-condvar(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) =      condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected)
-condstd(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = sqrt(condmean(x->abs(x)^2, broadcast(-,A,m), cond, region, Km1=corrected))
+condvar(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) =       condmean(x->abs(x)*abs(x), broadcast(-,A,m), cond, region, Km1=corrected)
+condstd(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = sqrt.(condmean(x->abs(x)*abs(x), broadcast(-,A,m), cond, region, Km1=corrected))
 # corrected=true normalizes variance by K-1
 
-
+"nanmean(X,r) mean of X long dimension(s) r, ignoring NaNs."
+nanmean(X,r)=condmean(X,!(isnan),r)
+"nanstd(X,r) standard deviation of X along dimension(s) r, ignoring NaNs."
+nanstd(X,r)=sqrt.(condmean(x->abs(x)*abs(x),X,!(isnan),r))
 end # module
+
