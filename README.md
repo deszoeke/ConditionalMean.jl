@@ -44,9 +44,9 @@ condmean(X, -999)         # another method: pass the missing value as a number t
 You can also call `condmean` on a function of the array. For example,
 ```
 f(x) = abs(x)*abs(x)
-nanvar(X,r) = condmean( f ,X,!(isnan),r)
+nanvar(X,r) = condmean( f, X.-nanmean(X,r), !(isnan), r)
 ```
-squares the values of `X` before accumulating them, thus computing the variance.
+squares the anomalies of `X` inside the sum, thus computing the variance.
 
 ## Numerical precision
 
