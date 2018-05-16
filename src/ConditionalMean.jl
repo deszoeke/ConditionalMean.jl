@@ -20,9 +20,11 @@ condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number            , 
 
 # # general condition cond generalizes to all Number types, but behavior maybe unpredictable for some
 # function _condmean{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
-#     sz = Base.reduced_dims(A, region)
-#     K = zeros(Int, sz)
-#     S = zeros(eltype(A), sz)
+#     inds = Base.reduced_indices(A, region)
+#     K = similar(Array{Int}, inds)
+#     S = similar(array{eltype(A)}, inds)
+#     fill!(K,0)
+#     fill!(S, zero(eltype(A)))
 #     condsum!(S, K, A, f, cond)
 #     if Km1
 #        S./(K-1)
@@ -33,10 +35,13 @@ condmean{T<:Number}(f::Function, A::AbstractArray{T}, cond::Number            , 
 
 # add offset to improve precision for floating point numerics, behavior unpredictable for other types
 function _condmeanoffset{T<:Number}(f::Function, A::AbstractArray, ::Type{T}, cond, region, Km1::Bool=false)
-    sz = Base.reduced_indices(A, region)
-    K = zeros(Int, sz)
-    S = zeros(eltype(A), sz)
-    P = zeros(eltype(A), sz)
+    inds = Base.reduced_indices(A, region)
+    K = similar(Array{Int}, inds)
+    S = similar(array{eltype(A)}, inds)
+    P = similar(array{eltype(A)}, inds)
+    fill!(K,0)
+    fill!(S, zero(eltype(A)))
+    fill!(P, zero(eltype(A)))
     condsumoffset!(S, P, K, A, f, cond)
     if Km1
         (S + P.*K) ./ (K-1)
@@ -202,6 +207,6 @@ condstd(A,cond,region; m=condmean(A,cond,region), corrected::Bool=true) = sqrt.(
 "nanmean(X,r) mean of X long dimension(s) r, ignoring NaNs."
 nanmean(X,r)=condmean(X,!(isnan),r)
 "nanstd(X,r) standard deviation of X along dimension(s) r, ignoring NaNs."
-nanstd(X,r)=sqrt.(condmean(x->abs(x)*abs(x),X,!(isnan),r))
+nanstd(X,r)=sqrt.(condmean(x->abs(x)*abs(x),X.-nanmean(X,r),!(isnan),r))
 end # module
 
